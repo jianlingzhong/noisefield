@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<!--
+  NOISEFIELD — material atlas.
+
+  A development-only harness. Bakes the whole MaterialLibrary offscreen and
+  renders each surface as a lit 3 x 3-tile quad plus its raw albedo / normal /
+  ORM maps, so a surface can be judged WITHOUT the level's lighting, fog,
+  tonemapping or geometry in the way.
+
+  Two things make this worth its keep:
+
+    * A tiling artefact is obvious on a 3 x 3 layout and nearly invisible in a
+      game frame, where perspective, shadow and haze all hide it. If it tiles
+      here it will tile in the level; if it is clean here the level is clean.
+
+    * Most of these 17 surfaces are not reachable from the level at all —
+      Level.ts resolves materials through forSurface(), which only covers the
+      11 SurfaceType values, and it marks most of its buckets fromLibrary:false
+      anyway. plaster, brick, cinderblock, asphalt, steel_painted and
+      glass_broken therefore never appear on screen. Without this page they
+      cannot be reviewed at all.
+
+  Not shipped: it lives beside the source and is served by the dev server. It
+  imports nothing outside src/materials plus three, so it cannot be broken by
+  work in another part of the project.
+
+  Query parameters:
+    ?id=concrete    render only this surface
+    ?tier=ultra     quality tier passed to the bake (low|medium|high|ultra)
+    ?tiles=3        how many texture tiles across the lit quad
+    ?rot=25         sun elevation in degrees; low angles expose relief best
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Noisefield — material atlas</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0; background: #101012; color: #d8d8d8;
+        font: 12px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      h1 { font-size: 14px; margin: 12px 16px 4px; font-weight: 600; }
+      #status { margin: 0 16px 12px; color: #8a8a92; }
+      #grid { display: flex; flex-wrap: wrap; gap: 14px; padding: 0 16px 24px; }
+      .card { background: #18181c; border: 1px solid #2a2a30; border-radius: 6px; padding: 8px; }
+      .card .name { margin-bottom: 6px; color: #e8e8ee; }
+      .card .meta { margin-top: 6px; color: #7d7d86; font-size: 11px; }
+      .row { display: flex; gap: 6px; align-items: flex-start; }
+      .maps { display: flex; flex-direction: column; gap: 6px; }
+      canvas { display: block; image-rendering: pixelated; border-radius: 3px; }
+      .lbl { font-size: 10px; color: #6a6a72; margin-bottom: 1px; }
+    </style>
+  </head>
+  <body>
+    <h1>NOISEFIELD — material atlas</h1>
+    <div id="status">baking…</div>
+    <div id="grid"></div>
+    <script type="module" src="./atlas.ts"></script>
+  </body>
+</html>

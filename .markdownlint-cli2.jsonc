@@ -1,0 +1,32 @@
+{
+  // markdownlint configuration.
+  //
+  // Only two rules are relaxed, and both are deliberate rather than convenience:
+  "config": {
+    "default": true,
+
+    // MD033 (no-inline-html): <kbd> is the conventional way to render key names
+    // in a README and GitHub styles it natively. There is no CommonMark
+    // equivalent, so the alternative is losing the formatting entirely.
+    "MD033": {
+      "allowed_elements": ["kbd"]
+    },
+
+    // MD013 (line-length): prose is hard-wrapped at 80, which this enforces.
+    // Tables are exempt because a table row cannot be wrapped without breaking
+    // the table, and headings are exempt for the same reason.
+    "MD013": {
+      "line_length": 80,
+      "tables": false,
+      "headings": false,
+      "code_blocks": false
+    }
+  },
+  "globs": ["**/*.md"],
+  // CODE_OF_CONDUCT.md is the verbatim Contributor Covenant. Reflowing a
+  // standard document to satisfy a line-length rule would be inappropriate.
+  "ignores": ["node_modules/**", "dist/**", "CHANGELOG.md", "CODE_OF_CONDUCT.md",
+  // GitHub issue/PR templates conventionally open with "##", not an H1,
+  // because GitHub renders the title separately.
+  ".github/**"]
+}

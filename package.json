@@ -1,0 +1,55 @@
+{
+  "name": "noisefield",
+  "version": "1.0.0",
+  "description": "A first-person shooter that runs entirely in the browser, built from zero external assets \u2014 every texture, mesh and sound is generated in code at load time.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "author": "Jianling Zhong",
+  "homepage": "https://jianlingzhong.github.io/noisefield/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jianlingzhong/noisefield.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jianlingzhong/noisefield/issues"
+  },
+  "keywords": [
+    "threejs",
+    "webgl2",
+    "fps",
+    "first-person-shooter",
+    "procedural-generation",
+    "procedural-textures",
+    "pbr",
+    "game",
+    "browser-game",
+    "typescript",
+    "webaudio",
+    "shaders",
+    "no-assets"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint:md": "markdownlint-cli2 \"**/*.md\"",
+    "check": "npm run typecheck && npm run test && npm run lint:md"
+  },
+  "dependencies": {
+    "n8ao": "^2.0.0",
+    "postprocessing": "^6.39.3",
+    "three": "^0.185.1",
+    "three-mesh-bvh": "^0.9.13"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.1",
+    "happy-dom": "^20.11.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}

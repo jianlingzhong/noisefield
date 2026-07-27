@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # Runtime and build dependencies. Grouped so a routine Three.js bump does not
+  # arrive as four separate pull requests.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      three-ecosystem:
+        patterns:
+          - three
+          - "@types/three"
+          - three-mesh-bvh
+          - postprocessing
+          - n8ao
+      dev-dependencies:
+        dependency-type: development
+
+  # The deploy workflow's actions. Without this, pinned action SHAs silently go
+  # stale and stop receiving security fixes.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

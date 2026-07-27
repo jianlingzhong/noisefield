@@ -1,0 +1,65 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Allows a manual run from the Actions tab.
+  workflow_dispatch:
+
+# Needed for the deploy-pages action to publish.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; queue instead, and don't abort one mid-publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      # `npm ci` requires package-lock.json to be committed. If you see
+      # "lock file not found", either commit the lock file or switch to
+      # `npm install`.
+      - run: npm ci
+
+      # Tests gate the deploy. They are pure logic and geometry checks with no
+      # browser needed, so they cost a second and catch the class of bug that
+      # typechecking cannot: a missing key binding, a GLSL reserved word, a
+      # flat-shaded chamfer.
+      - run: npm test
+
+      # `npm run build` runs `tsc --noEmit` first, so a type error fails the
+      # deploy rather than publishing a broken bundle.
+      - run: npm run build
+
+      # `enablement: true` turns Pages on if it is not already enabled, so a
+      # fresh clone of this repository deploys without anyone having to visit
+      # the Settings tab first.
+      - uses: actions/configure-pages@v6
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

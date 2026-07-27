@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an addition or improvement
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before suggesting new content, note the project's one hard constraint:
+        **everything is generated in code.** Proposals that require shipping a
+        texture, model, font or audio file will not be accepted, because the
+        no-external-assets property is the point of the project. Procedural
+        equivalents are very welcome.
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to see
+    validations:
+      required: true
+
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Why
+      description: What problem does this solve, or what does it make possible?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: This can be implemented without adding any external asset files
+          required: true

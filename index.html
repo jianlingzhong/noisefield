@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>NOISEFIELD</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%; height: 100%; overflow: hidden;
+        background: #05070a; color: #e8eaed;
+        font-family: 'Rajdhani', 'Bahnschrift', 'DIN Alternate', 'Segoe UI', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        cursor: default;
+      }
+      #app { position: fixed; inset: 0; }
+      canvas#viewport { display: block; width: 100%; height: 100%; outline: none; }
+      #ui-root { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+      #boot {
+        position: fixed; inset: 0; z-index: 100;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: radial-gradient(ellipse at 50% 45%, #14202c 0%, #070a0e 60%, #04060a 100%);
+        transition: opacity 0.6s ease;
+      }
+      #boot.hidden { opacity: 0; pointer-events: none; }
+      #boot h1 {
+        font-size: clamp(38px, 7vw, 92px); font-weight: 700; letter-spacing: 0.22em;
+        text-transform: uppercase; margin-left: 0.22em;
+        background: linear-gradient(180deg, #ffffff 0%, #a8bccf 55%, #5d7f9c 100%);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+        text-shadow: 0 0 60px rgba(120, 190, 255, 0.18);
+      }
+      #boot .sub {
+        margin-top: 10px; font-size: 13px; letter-spacing: 0.42em; text-transform: uppercase;
+        color: #6d8296;
+      }
+      #boot .bar {
+        margin-top: 46px; width: min(420px, 62vw); height: 2px;
+        background: rgba(255,255,255,0.08); overflow: hidden; position: relative;
+      }
+      #boot .bar > i {
+        position: absolute; inset: 0; width: 0%;
+        background: linear-gradient(90deg, #3d7fb8, #7fd4ff);
+        box-shadow: 0 0 18px rgba(127, 212, 255, 0.6);
+        transition: width 0.25s ease;
+      }
+      #boot .status {
+        margin-top: 16px; font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase;
+        color: #4e6274; height: 14px;
+      }
+      #boot .enter {
+        margin-top: 40px; padding: 14px 46px;
+        border: 1px solid rgba(140, 200, 255, 0.35);
+        background: rgba(20, 40, 60, 0.35);
+        color: #cfe6ff; font-size: 14px; letter-spacing: 0.3em; text-transform: uppercase;
+        font-family: inherit; font-weight: 600;
+        cursor: pointer; pointer-events: auto; opacity: 0; transition: all 0.25s ease;
+      }
+      #boot .enter.show { opacity: 1; }
+      #boot .enter:hover { background: rgba(50, 110, 160, 0.45); border-color: #7fd4ff; box-shadow: 0 0 30px rgba(127,212,255,0.25); }
+      #boot .hint { margin-top: 22px; font-size: 11px; letter-spacing: 0.16em; color: #46586a; }
+      #fatal {
+        position: fixed; inset: 0; z-index: 200; display: none;
+        padding: 40px; background: #0a0d12; color: #ff8a8a;
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px;
+        white-space: pre-wrap; overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="viewport" tabindex="0"></canvas>
+      <div id="ui-root"></div>
+      <div id="boot">
+        <h1>Noisefield</h1>
+        <div class="sub">Tactical Engagement Simulator</div>
+        <div class="bar"><i id="boot-bar"></i></div>
+        <div class="status" id="boot-status">Initialising</div>
+        <button class="enter" id="boot-enter">Deploy</button>
+        <div class="hint">WASD move · SHIFT sprint · CTRL crouch · SPACE jump · LMB fire · RMB aim · R reload · 1/2 weapons</div>
+      </div>
+      <pre id="fatal"></pre>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,1345 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   NOISEFIELD — HUD stylesheet
+   ═══════════════════════════════════════════════════════════════════════════
+
+   DESIGN THESIS
+   -------------
+   A combat HUD is never *looked at*; it is read in peripheral vision while the
+   fovea is locked on a target. Three consequences drive every rule below:
+
+   1. CONTRAST BEFORE COLOUR. Peripheral vision is nearly colour-blind and
+      strongly luminance-driven. Everything therefore carries a hard dark
+      outline / drop shadow so it survives being drawn over bright sand *and*
+      black shadow. This is the single most common failure mode of hobby HUDs:
+      near-white text on a sunlit desert scene simply disappears. Every text
+      run here gets `--sh-text`; every glyph gets a stroke or a filter.
+
+   2. MOTION IS THE ALERT CHANNEL. Peripheral vision resolves motion far better
+      than form, so state changes (low ammo, damage, streaks) announce
+      themselves by *moving*, not by changing colour alone.
+
+   3. IT MUST SIT IN THE WORLD, NOT ON IT. Everything runs at 85-92% opacity
+      with slight cool tinting so it reads as a projected reticle rather than
+      as a browser overlay pasted on top of the render.
+
+   PERFORMANCE CONTRACT
+   --------------------
+   Only `transform`, `opacity` and `filter` are ever animated. No animation
+   touches width/height/top/left/margin/padding, so nothing here can trigger
+   layout or force a synchronous style flush on the render thread. Elements
+   that animate carry `will-change` only while they are actually animating
+   (added by keyframe use), because a permanently promoted layer costs VRAM.
+
+   ZERO EXTERNAL ASSETS
+   --------------------
+   No @font-face, no url(), no network. The font stack is entirely
+   system-resident faces that read technical/military, in descending order of
+   how condensed and how "instrument panel" they look.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.nf-hud,
+.nf-menu {
+  /* — Typeface ————————————————————————————————————————————————————————————
+     Bahnschrift (Win10+) and DIN Alternate (macOS) are genuine DIN-derived
+     industrial faces — the exact lineage of real instrumentation lettering.
+     Oswald/Rajdhani are picked up if the user happens to have them locally.
+     Everything after that is a graceful fall back to a neutral UI grotesque. */
+  --font: 'Bahnschrift', 'DIN Alternate', 'DIN Condensed', 'Oswald', 'Rajdhani',
+    'Segoe UI Semibold', 'Segoe UI', 'Roboto Condensed', system-ui, -apple-system,
+    'Helvetica Neue', Arial, sans-serif;
+
+  /* — Palette ————————————————————————————————————————————————————————————
+     Primary is very slightly cool (#F2F5F7 not #FFF): a pure-white HUD reads
+     as "UI chrome", a cool off-white reads as an emissive optic. */
+  --c-primary: #f2f5f7;
+  --c-accent: #cfe8ff;   /* cyan-white — informational emphasis, never alarm  */
+  --c-warn: #ffb454;     /* amber      — "act soon" (low ammo, low stamina)   */
+  --c-danger: #ff4436;   /* red        — "act now" (damage, death, kill)      */
+  --c-dim: #93a6b4;      /* labels; deliberately low-contrast so it recedes   */
+  --c-ink: #05080b;
+
+  /* — Elevation / legibility —————————————————————————————————————————————
+     Two shadows per element: a tight 1px one that gives the glyph a hard edge
+     against light backgrounds, plus a wide soft one that darkens the local
+     background so the glyph has something to sit against. One alone is not
+     enough — tight-only fails on sand, soft-only fails on high-frequency
+     rubble textures. */
+  --sh-text: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.6),
+    0 0 3px rgba(0, 0, 0, 0.9);
+  --sh-text-lg: 0 2px 4px rgba(0, 0, 0, 0.95), 0 0 22px rgba(0, 0, 0, 0.65),
+    0 0 4px rgba(0, 0, 0, 0.9);
+  --sh-box: 0 2px 18px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.35);
+  --glyph-shadow: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.95))
+    drop-shadow(0 0 6px rgba(0, 0, 0, 0.55));
+
+  /* — Metrics ————————————————————————————————————————————————————————————
+     `vmin` (not vw) so a wide monitor does not inflate the HUD, and clamp()
+     so it stays sane from 720p (min) to 4K (max). The safe inset is ~3.5% of
+     the short axis, matching the TV title-safe convention console shooters use. */
+  --safe: clamp(14px, 3.4vmin, 54px);
+  --u: clamp(9px, 1.34vmin, 21px);       /* base type unit                    */
+  --u-lg: clamp(26px, 4.6vmin, 74px);    /* the ammo magazine number          */
+  --u-md: clamp(14px, 2.05vmin, 32px);   /* reserve count, health readout     */
+  --u-sm: clamp(8.5px, 1.06vmin, 16px);  /* labels, killfeed                  */
+
+  --radius: clamp(3px, 0.45vmin, 7px);
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+  letter-spacing: 0.06em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   ROOT
+   #ui-root is already pointer-events:none, but we restate it: a future change
+   to index.html must not silently make the HUD start eating clicks.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.nf-hud {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  color: var(--c-primary);
+  opacity: 1;
+  transition: opacity 180ms ease;
+  /* Isolate so the HUD's blend modes cannot reach back into the WebGL canvas. */
+  isolation: isolate;
+}
+
+/* While the pause menu is up the HUD recedes rather than vanishing: keeping a
+   ghost of it preserves the player's spatial memory of where things are. */
+.nf-hud[data-paused='1'] {
+  opacity: 0.25;
+}
+
+/* Declared AFTER the paused rule and with doubled specificity. Both selectors
+   are one class plus one attribute, so with the original ordering a HUD that
+   was hidden *and* paused resolved to the paused rule and stayed visible at
+   25% — `setVisible(false)` silently did nothing whenever the game was paused.
+   Hiding is an override, not a peer, so it is written as one. */
+.nf-hud[data-hidden='1'],
+.nf-hud[data-hidden='1'][data-paused='1'] {
+  opacity: 0;
+}
+
+.nf-hud * {
+  pointer-events: none;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   FULL-SCREEN DAMAGE LAYERS
+
+   Stacking order matters and is expressed purely by DOM order:
+     vignette (bottom) → hit flash → threat arcs → reticle → chrome (top)
+   so the readable text always wins against the blood overlay.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Blood-edge vignette. Health is NOT shown as a bar during play (the genre's core
+   readability decision: a bar forces you to look at the corner of the screen
+   at the exact moment you need to be looking at the threat). Instead the frame
+   itself bleeds inward, which is legible with zero eye movement. */
+.nf-vignette {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  /* JS writes --dmg 0..1; the gradient stops move with it so the red does not
+     merely get brighter, it *creeps inward*, which reads as escalation. */
+  --dmg: 0;
+  /* Two stacked gradients, both normal-blended. A `multiply` layer would read
+     far better over bright sand, but #ui-root sits in its own stacking context
+     (position:fixed + z-index) so a blend mode here can never reach the WebGL
+     canvas underneath — it would silently blend against transparent black and
+     do nothing. The compensation is a DARK, saturated red at high alpha: dark
+     red at 0.9 alpha survives over blown-out sand, where a bright red at 0.5
+     just tints it orange and disappears. */
+  background:
+    radial-gradient(
+      ellipse 128% 116% at 50% 50%,
+      rgba(0, 0, 0, 0) calc(38% - var(--dmg) * 26%),
+      rgba(116, 7, 5, calc(0.55 * var(--dmg))) calc(74% - var(--dmg) * 22%),
+      rgba(142, 9, 6, calc(0.95 * var(--dmg))) 100%
+    ),
+    radial-gradient(
+      ellipse 150% 130% at 50% 50%,
+      rgba(0, 0, 0, 0) 48%,
+      rgba(24, 1, 1, calc(0.62 * var(--dmg))) 100%
+    );
+  /* No `will-change`. This element is invisible almost all of the time, and a
+     permanent compositor promotion of a full-screen layer costs tens of
+     megabytes of VRAM at 4K to accelerate a transition that is already cheap. */
+}
+
+/* Hard edge band. The vignette alone is a red wash, and this level is sunlit
+   orange sand — a red wash over orange reads as "slightly warmer sand", which
+   is camouflage exactly where a warning is needed. This band is near-black
+   crimson and nearly opaque at the extreme edge, so it survives ANY backdrop;
+   it stays completely absent until --dmg passes ~0.55 so it never becomes
+   wallpaper. Luminance, not hue, is what carries this signal. */
+.nf-vignette::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: clamp(0, calc((var(--dmg) - 0.55) * 2.6), 1);
+  background:
+    linear-gradient(180deg, rgba(58, 3, 2, 0.92) 0%, rgba(58, 3, 2, 0) 9%),
+    linear-gradient(0deg, rgba(58, 3, 2, 0.92) 0%, rgba(58, 3, 2, 0) 11%),
+    linear-gradient(90deg, rgba(58, 3, 2, 0.7) 0%, rgba(58, 3, 2, 0) 7%),
+    linear-gradient(270deg, rgba(58, 3, 2, 0.7) 0%, rgba(58, 3, 2, 0) 7%);
+}
+
+/* The heartbeat lives on a child so JS can own the parent's opacity (intensity)
+   while CSS owns the pulse — two systems writing one property is a classic
+   flicker bug. */
+.nf-vignette__pulse {
+  position: absolute;
+  inset: -2%;
+  opacity: 0;
+  background: radial-gradient(
+    ellipse 120% 110% at 50% 50%,
+    rgba(0, 0, 0, 0) 46%,
+    rgba(214, 26, 18, 0.5) 100%
+  );
+  transform: scale(1);
+}
+
+/* Critical health only. ~0.92s period ≈ 65bpm, and it is a genuine lub-DUB
+   double beat, not a sine: the human ear/eye recognises the double-thump
+   instantly as a heartbeat, whereas a single smooth pulse just reads as a
+   flashing light. The second beat is deliberately weaker (0.62 of the first). */
+.nf-vignette[data-critical='1'] .nf-vignette__pulse {
+  animation: ap-heartbeat 0.92s cubic-bezier(0.25, 0.9, 0.35, 1) infinite;
+}
+
+@keyframes ap-heartbeat {
+  0% { opacity: 0; transform: scale(1); }
+  5% { opacity: 0.95; transform: scale(1.016); }   /* lub */
+  13% { opacity: 0.1; transform: scale(1.002); }
+  20% { opacity: 0.59; transform: scale(1.01); }   /* dub */
+  31% { opacity: 0.04; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+/* Impact flash. Two stacked gradients offset in opposite directions give a
+   cheap chromatic-aberration read (warm fringe one side, cool the other)
+   without a post-process pass. 130ms total: long enough to register, short
+   enough that it never obscures the shot you need to return. */
+/* NOTE: no `mix-blend-mode` here. It would be a no-op — the HUD is inside its
+   own stacking context, so the only backdrop available to blend against is
+   transparent black. Declaring one would cost an extra compositing layer and
+   buy nothing. */
+.nf-hitflash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background:
+    radial-gradient(ellipse 96% 90% at 48.6% 50%, rgba(255, 40, 26, 0) 40%, rgba(214, 30, 18, 0.62) 100%),
+    radial-gradient(ellipse 96% 90% at 51.4% 50%, rgba(40, 130, 255, 0) 44%, rgba(60, 130, 235, 0.28) 100%);
+  transform: scale(1.06);
+}
+
+.nf-hitflash[data-fire='1'] {
+  animation: ap-hitflash 130ms ease-out 1;
+}
+
+@keyframes ap-hitflash {
+  0% { opacity: 0; transform: scale(1.14); }
+  18% { opacity: 1; transform: scale(1.02); }
+  100% { opacity: 0; transform: scale(1.06); }
+}
+
+/* Death desaturation wash — distinct from damage so "hurt" and "dead" are
+   never confused at a glance. */
+.nf-deathwash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(180deg, rgba(60, 6, 4, 0.55), rgba(10, 2, 2, 0.8));
+  transition: opacity 260ms ease;
+}
+
+.nf-deathwash[data-dead='1'] {
+  opacity: 1;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   CENTRE CANVASES
+
+   Both are *small square canvases pinned to the middle of the screen*, not
+   full-screen surfaces. A full-screen canvas at DPR 2 on a 4K display is a
+   132 MB backing store redrawn every frame for a few hundred lit pixels.
+   JS positions them on integer pixels so a 1px centre dot stays crisp.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.nf-threat,
+.nf-reticle {
+  position: absolute;
+  display: block;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   COMPASS TAPE (top centre)
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.nf-compass {
+  position: absolute;
+  top: calc(var(--safe) * 0.62);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  opacity: 0.9;
+}
+
+/* The mask does the edge fade in the compositor, so the canvas itself can draw
+   a plain unfaded tape and stay a trivial per-frame redraw. */
+.nf-compass__tape {
+  display: block;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 13%, #000 87%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 13%, #000 87%, transparent 100%);
+}
+
+.nf-compass__bearing {
+  margin-top: calc(var(--u) * 0.14);
+  font-size: calc(var(--u-sm) * 1.06);
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  margin-right: -0.24em;
+  color: var(--c-accent);
+  text-shadow: var(--sh-text);
+  opacity: 0.95;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   TOP-LEFT CLUSTER — minimap with the score strip beneath it.
+
+   A flex column rather than two absolutely-positioned blocks: the minimap's
+   pixel size is computed in JS from the viewport, and hard-coding a matching
+   `top` for the score would mean two sources of truth for one layout. Flex
+   lets the score follow the radar for free at every resolution.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.nf-topleft {
+  position: absolute;
+  top: var(--safe);
+  left: var(--safe);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--u) * 0.62);
+}
+
+.nf-minimap__canvas {
+  display: block;
+  transition: opacity 200ms ease;
+}
+
+.nf-score {
+  display: flex;
+  gap: calc(var(--u) * 1.15);
+  align-items: flex-end;
+}
+
+.nf-score__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1;
+}
+
+.nf-score__cell b {
+  font-size: calc(var(--u) * 1.75);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-shadow: var(--sh-text);
+  /* transform-only pop, so a score change cannot reflow the strip. */
+  transform: scale(1);
+  transition: transform 160ms cubic-bezier(0.2, 1.8, 0.4, 1), color 220ms ease;
+}
+
+.nf-score__cell i {
+  font-size: calc(var(--u-sm) * 0.86);
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  color: var(--c-dim);
+  text-shadow: var(--sh-text);
+  margin-top: 0.22em;
+}
+
+.nf-score__cell[data-bump='1'] b {
+  transform: scale(1.34);
+}
+
+.nf-score__cell--streak b {
+  color: var(--c-accent);
+}
+
+.nf-score__cell--streak[data-hot='1'] b {
+  color: var(--c-warn);
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   KILLFEED (top right)
+
+   Newest at top. Entries are removed only after their exit animation, and the
+   exit is transform+opacity, so the reflow when the node finally leaves the
+   flex column happens on an already-invisible element.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.nf-killfeed {
+  position: absolute;
+  top: var(--safe);
+  right: var(--safe);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: calc(var(--u) * 0.3);
+  max-width: 42vw;
+}
+
+.nf-kf__row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 0.42);
+  padding: calc(var(--u) * 0.22) calc(var(--u) * 0.5);
+  background: linear-gradient(90deg, rgba(6, 10, 14, 0), rgba(6, 10, 14, 0.5));
+  border-right: 2px solid rgba(207, 232, 255, 0.35);
+  font-size: var(--u-sm);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  text-shadow: var(--sh-text);
+  /* 220ms in — fast enough to feel like a consequence of the kill rather than
+     a separate UI event, slow enough that the eye can follow it upward. */
+  animation: ap-kf-in 220ms cubic-bezier(0.16, 1, 0.3, 1) 1;
+}
+
+.nf-kf__row[data-out='1'] {
+  animation: ap-kf-out 320ms ease-in forwards;
+}
+
+.nf-kf__row[data-mine='1'] {
+  border-right-color: var(--c-accent);
+  background: linear-gradient(90deg, rgba(6, 10, 14, 0), rgba(22, 44, 62, 0.62));
+}
+
+.nf-kf__row[data-death='1'] {
+  border-right-color: var(--c-danger);
+  background: linear-gradient(90deg, rgba(14, 4, 4, 0), rgba(66, 12, 10, 0.62));
+}
+
+@keyframes ap-kf-in {
+  from { opacity: 0; transform: translate3d(26%, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes ap-kf-out {
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+  to { opacity: 0; transform: translate3d(14%, -40%, 0); }
+}
+
+.nf-kf__actor {
+  color: var(--c-primary);
+  opacity: 0.92;
+}
+
+.nf-kf__actor--you {
+  color: var(--c-accent);
+}
+
+.nf-kf__actor--victim-you {
+  color: var(--c-danger);
+}
+
+.nf-kf__glyph {
+  display: block;
+  height: calc(var(--u-sm) * 1.15);
+  width: auto;
+  fill: var(--c-primary);
+  opacity: 0.95;
+  filter: var(--glyph-shadow);
+}
+
+.nf-kf__hs {
+  display: block;
+  height: calc(var(--u-sm) * 1.05);
+  width: auto;
+  fill: var(--c-warn);
+  filter: var(--glyph-shadow);
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   MEDAL / STREAK CALLOUT
+
+   Sits above the reticle (never masking a target the player is tracking) and
+   below the compass. Shooters put medals here for exactly that reason: the centre
+   band of the screen is sacred.
+
+   Anchored by its BOTTOM edge at 22vmin above centre rather than at a
+   percentage of viewport height. The directional damage arcs ring the centre
+   at 17vmin, and a percentage-of-height anchor collides with them on a wide
+   viewport — an actual regression caught in review, where the "+100 XP"
+   subtitle landed squarely underneath an incoming-fire arc. Expressing both
+   radii in the same unit makes the clearance a property of the layout instead
+   of a coincidence.
+
+   Also pulled OFF the vertical centreline to 34% of the width. Centred, it sat
+   about 11 degrees above the reticle — which at close range is precisely where
+   a standing enemy's head is. Announcing a double kill by covering the next
+   target is self-defeating. 34% keeps it in easy peripheral vision, clear of
+   the damage arcs at every aspect ratio, and clear of the minimap column.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.nf-callout {
+  position: absolute;
+  bottom: calc(50% + 22vmin);
+  left: 34%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.18em;
+  opacity: 0;
+}
+
+.nf-callout[data-show='1'] {
+  /* 1.85s total: 260ms in, ~900ms hold, ~690ms out. Long enough to be read
+     mid-firefight without being a distraction on the next engagement. */
+  animation: ap-callout 1850ms cubic-bezier(0.16, 1, 0.3, 1) 1;
+}
+
+.nf-callout__title {
+  font-size: calc(var(--u) * 1.7);
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  margin-left: 0.3em;
+  color: var(--c-primary);
+  text-shadow: var(--sh-text-lg), 0 0 26px rgba(255, 180, 84, 0.35);
+}
+
+.nf-callout__sub {
+  font-size: calc(var(--u-sm) * 0.95);
+  font-weight: 600;
+  letter-spacing: 0.36em;
+  margin-left: 0.36em;
+  color: var(--c-warn);
+  text-shadow: var(--sh-text);
+}
+
+@keyframes ap-callout {
+  0% { opacity: 0; transform: translate3d(calc(-50% - 34px), 0, 0) scale(0.9); }
+  14% { opacity: 1; transform: translate3d(-50%, 0, 0) scale(1.04); }
+  22% { transform: translate3d(-50%, 0, 0) scale(1); }
+  62% { opacity: 1; transform: translate3d(-50%, 0, 0) scale(1); }
+  100% { opacity: 0; transform: translate3d(-50%, -14px, 0) scale(1.02); }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   DEATH BANNER
+
+   Centre screen, because that is where the player is already looking, and
+   persistent, because death is a STATE not an event: it must stay up for the
+   whole of it rather than expiring like a notification. Distinct wording and a
+   distinct silhouette from the low-health cue, so "dead" and "nearly dead"
+   cannot be confused — they previously shared nothing but a red screen wash.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.nf-death {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate3d(-50%, -50%, 0) scale(0.96);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35em;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 240ms ease, transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s linear 240ms;
+}
+
+.nf-death[data-dead='1'] {
+  opacity: 1;
+  visibility: visible;
+  transform: translate3d(-50%, -50%, 0) scale(1);
+  transition: opacity 240ms ease, transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s;
+}
+
+.nf-death__title {
+  font-size: calc(var(--u) * 2.6);
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  margin-left: 0.34em;
+  color: var(--c-danger);
+  text-shadow: var(--sh-text-lg), 0 0 34px rgba(255, 68, 54, 0.4);
+}
+
+.nf-death__sub {
+  font-size: var(--u-sm);
+  font-weight: 600;
+  letter-spacing: 0.4em;
+  margin-left: 0.4em;
+  color: var(--c-primary);
+  opacity: 0.8;
+  text-shadow: var(--sh-text);
+  animation: ap-death-sub 1.4s ease-in-out infinite;
+}
+
+@keyframes ap-death-sub {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.9; }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   AMMO (bottom right)
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.nf-ammo {
+  position: absolute;
+  right: var(--safe);
+  bottom: var(--safe);
+  display: flex;
+  align-items: flex-end;
+  gap: calc(var(--u) * 0.7);
+  opacity: 0.94;
+}
+
+.nf-ammo__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.nf-ammo__name {
+  font-size: var(--u-sm);
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  margin-right: -0.28em;
+  color: var(--c-accent);
+  opacity: 0.88;
+  text-shadow: var(--sh-text);
+  margin-bottom: 0.25em;
+  white-space: nowrap;
+}
+
+.nf-ammo__name[data-reloading='1'] {
+  color: var(--c-warn);
+  animation: ap-blink 620ms steps(1, end) infinite;
+}
+
+/* A hard two-state blink (steps, not a fade) reads as an instrument warning
+   rather than as decoration. The dim state stays at 0.62 — dipping to 0.35 made
+   the word unreadable for half of every cycle, which defeats the point. */
+@keyframes ap-blink {
+  0%, 55% { opacity: 1; }
+  56%, 100% { opacity: 0.62; }
+}
+
+.nf-ammo__row {
+  display: flex;
+  align-items: baseline;
+  line-height: 0.9;
+}
+
+.nf-ammo__mag {
+  font-size: var(--u-lg);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-shadow: var(--sh-text-lg);
+  color: var(--c-primary);
+  /* Colour is a slow transition (state), the pulse is a fast animation
+     (attention). Separating them stops a state change looking like an alert. */
+  transition: color 200ms ease;
+  transform-origin: 100% 100%;
+}
+
+.nf-ammo__sep {
+  font-size: var(--u-md);
+  font-weight: 400;
+  opacity: 0.45;
+  margin: 0 0.22em;
+  text-shadow: var(--sh-text);
+}
+
+.nf-ammo__reserve {
+  font-size: var(--u-md);
+  font-weight: 600;
+  opacity: 0.78;
+  text-shadow: var(--sh-text);
+  transition: color 200ms ease, opacity 200ms ease;
+}
+
+/* Amber at ≤35% — "think about reloading". No motion yet; motion this early
+   would train the player to ignore it. */
+.nf-ammo[data-ammo='low'] .nf-ammo__mag { color: var(--c-warn); }
+
+/* Red + pulse at ≤15% or ≤3 rounds — "reload now". 780ms is roughly a relaxed
+   breathing rate: fast enough to nag, slow enough not to induce panic, and
+   distinctly slower than the critical-health heartbeat so the two alarms are
+   separable in peripheral vision. */
+.nf-ammo[data-ammo='crit'] .nf-ammo__mag {
+  color: var(--c-danger);
+  animation: ap-ammo-pulse 780ms ease-in-out infinite;
+}
+
+.nf-ammo[data-ammo='empty'] .nf-ammo__mag {
+  color: var(--c-danger);
+  animation: ap-ammo-pulse 420ms ease-in-out infinite;
+}
+
+.nf-ammo[data-ammo='crit'] .nf-ammo__reserve,
+.nf-ammo[data-ammo='empty'] .nf-ammo__reserve { opacity: 0.95; }
+
+@keyframes ap-ammo-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.92; }
+  50% { transform: scale(1.075); opacity: 1; }
+}
+
+/* Dry fire. A single hard shake rather than a pulse: the player pulled the
+   trigger and nothing happened, and a discrete jolt is the only feedback that
+   reads as "that input was rejected" instead of "this is a warning state".
+   Overrides the pulse animation for its duration by virtue of coming later. */
+.nf-ammo[data-dry='1'] .nf-ammo__mag {
+  animation: ap-ammo-dry 260ms cubic-bezier(0.36, 0.07, 0.19, 0.97) 1;
+}
+
+@keyframes ap-ammo-dry {
+  0% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(-5%, 0, 0) scale(0.97); }
+  45% { transform: translate3d(4%, 0, 0); }
+  70% { transform: translate3d(-2%, 0, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+/* Reload ring. The arc is stroked by JS via stroke-dashoffset — a paint-only
+   change on a single ~54px element, which is orders of magnitude cheaper than
+   the layout work the "animate a width" alternative would cost. */
+.nf-ammo__ring {
+  display: block;
+  width: calc(var(--u) * 4.4);
+  height: calc(var(--u) * 4.4);
+  opacity: 0;
+  transform: scale(0.86);
+  transition: opacity 130ms ease, transform 180ms cubic-bezier(0.2, 1.6, 0.4, 1);
+  filter: var(--glyph-shadow);
+}
+
+.nf-ammo[data-reloading='1'] .nf-ammo__ring {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Stroke widths are in viewBox units (the box is 100 wide, r=44). At the
+   rendered ~42px the earlier 4-unit stroke came out barely over a pixel and the
+   progress arc was indistinguishable from its own track — caught in review.
+   11/8 units lands at roughly 4.6px/3.4px, which reads at a glance. */
+.nf-ammo__ring-track {
+  fill: none;
+  stroke: rgba(6, 12, 18, 0.78);
+  stroke-width: 11;
+}
+
+.nf-ammo__ring-fill {
+  fill: none;
+  stroke: var(--c-warn);
+  stroke-width: 8;
+  stroke-linecap: round;
+  /* -90° so the arc starts at 12 o'clock, the universal "timer" convention. */
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+/* Fired-round pips: a compact secondary read of magazine state that does not
+   require parsing a number. Scale-only so ticking one off never reflows. */
+.nf-ammo__pips {
+  display: flex;
+  gap: 2px;
+  margin-top: calc(var(--u) * 0.34);
+  height: calc(var(--u) * 0.34);
+  align-items: stretch;
+}
+
+.nf-ammo__pip {
+  width: calc(var(--u) * 0.19);
+  background: var(--c-primary);
+  opacity: 0.85;
+  transform: scaleY(1);
+  transform-origin: 50% 100%;
+  transition: transform 130ms ease, opacity 130ms ease, background-color 200ms ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.nf-ammo__pip[data-spent='1'] {
+  transform: scaleY(0.32);
+  opacity: 0.22;
+}
+
+.nf-ammo[data-ammo='crit'] .nf-ammo__pip:not([data-spent='1']),
+.nf-ammo[data-ammo='empty'] .nf-ammo__pip:not([data-spent='1']) {
+  background: var(--c-danger);
+}
+
+.nf-ammo[data-ammo='low'] .nf-ammo__pip:not([data-spent='1']) {
+  background: var(--c-warn);
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   HEALTH READOUT (bottom left)
+
+   Small and quiet by design. The vignette is the *primary* health channel;
+   this exists so the player can get an exact number when they choose to look,
+   which the vignette alone cannot give.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.nf-health {
+  position: absolute;
+  left: var(--safe);
+  bottom: var(--safe);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 0.26);
+  opacity: 0.9;
+}
+
+.nf-health__row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 0.44);
+}
+
+.nf-health__icon {
+  display: block;
+  width: calc(var(--u) * 1.15);
+  height: calc(var(--u) * 1.15);
+  fill: var(--c-primary);
+  opacity: 0.86;
+  filter: var(--glyph-shadow);
+  transition: fill 220ms ease;
+}
+
+.nf-health__num {
+  font-size: var(--u-md);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-shadow: var(--sh-text);
+  transition: color 220ms ease;
+  min-width: 2.4em;
+}
+
+.nf-health__label {
+  font-size: calc(var(--u-sm) * 0.86);
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  color: var(--c-dim);
+  text-shadow: var(--sh-text);
+}
+
+.nf-health__bar {
+  position: relative;
+  width: calc(var(--u) * 9);
+  height: calc(var(--u) * 0.26);
+  background: rgba(4, 8, 12, 0.66);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  overflow: hidden;
+}
+
+.nf-health__fill {
+  position: absolute;
+  inset: 0;
+  background: var(--c-primary);
+  transform-origin: 0 50%;
+  /* scaleX is compositor-only; animating `width` here would relayout the whole
+     bottom-left cluster on every regen tick.
+
+     NO transform transition: JS writes this every frame from an already-damped
+     value. A CSS transition on top would be restarted by each write, so the
+     bar would perpetually chase a target it never reaches. One owner per
+     property — JS owns transform, CSS owns colour. */
+  transform: scaleX(1);
+  transition: background-color 260ms ease;
+}
+
+/* A ghost bar that lags behind shows *how much* was just lost, which a single
+   bar cannot communicate. Fighting-game "red health", borrowed deliberately.
+
+   CRITICAL CONSTRAINT: this must NEVER share a hue with the fill. It was
+   originally --c-danger at 0.55, and at critical health the fill turns
+   --c-danger too — so the two merged into one bar and the readout said "72%
+   full" at 12 HP. Because the ghost is always the longer of the two, the bar
+   lied in exactly the state where being wrong is fatal. A dark, desaturated
+   maroon can never be confused with the bright fill in front of it, whatever
+   colour the fill takes.
+
+   Also no transform transition: JS drives the decay per frame. */
+.nf-health__ghost {
+  position: absolute;
+  inset: 0;
+  background: #5c1009;
+  opacity: 0.95;
+  transform-origin: 0 50%;
+  transform: scaleX(1);
+}
+
+.nf-health[data-state='hurt'] .nf-health__fill { background: var(--c-warn); }
+.nf-health[data-state='hurt'] .nf-health__num { color: var(--c-warn); }
+.nf-health[data-state='hurt'] .nf-health__icon { fill: var(--c-warn); }
+
+.nf-health[data-state='crit'] .nf-health__fill { background: #ff6a5c; }
+.nf-health[data-state='crit'] .nf-health__num { color: var(--c-danger); }
+.nf-health[data-state='crit'] .nf-health__icon { fill: var(--c-danger); }
+
+.nf-health[data-regen='1'] .nf-health__fill {
+  animation: ap-regen 1100ms ease-in-out infinite;
+}
+
+@keyframes ap-regen {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   NOTIFICATION TOASTS (upper centre, under the compass)
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.nf-toasts {
+  position: absolute;
+  top: calc(var(--safe) * 0.62 + var(--u) * 4.3);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--u) * 0.26);
+}
+
+.nf-toast {
+  padding: calc(var(--u) * 0.2) calc(var(--u) * 0.85);
+  font-size: var(--u-sm);
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  margin-right: -0.24em;
+  white-space: nowrap;
+  color: var(--c-primary);
+  background: rgba(6, 10, 14, 0.5);
+  border-bottom: 1px solid rgba(207, 232, 255, 0.3);
+  text-shadow: var(--sh-text);
+  animation: ap-toast-in 200ms cubic-bezier(0.16, 1, 0.3, 1) 1;
+}
+
+.nf-toast[data-kind='warn'] { color: var(--c-warn); border-bottom-color: rgba(255, 180, 84, 0.5); }
+.nf-toast[data-kind='kill'] { color: var(--c-danger); border-bottom-color: rgba(255, 68, 54, 0.5); }
+.nf-toast[data-out='1'] { animation: ap-toast-out 280ms ease-in forwards; }
+
+@keyframes ap-toast-in {
+  from { opacity: 0; transform: translate3d(0, -8px, 0) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ap-toast-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translate3d(0, -10px, 0); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PAUSE MENU
+
+   Its own root, appended to #ui-root as a sibling of the HUD, and the only
+   thing in the whole UI tree with pointer-events:auto.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.nf-menu {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: stretch;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 180ms ease, visibility 0s linear 180ms;
+  color: var(--c-primary);
+  cursor: default;
+}
+
+.nf-menu[data-open='1'] {
+  pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 180ms ease, visibility 0s;
+}
+
+/* Frosted glass over the frozen frame. The saturate(0.55) is the important
+   part: desaturating the paused world is what makes the menu read as "the
+   game is suspended" rather than "a dialog opened". */
+.nf-menu__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 10, 15, 0.52);
+  -webkit-backdrop-filter: blur(22px) saturate(0.55) brightness(0.72);
+  backdrop-filter: blur(22px) saturate(0.55) brightness(0.72);
+}
+
+/* Faint scanlines + a vignette sell "tactical display" without any bitmap. */
+.nf-menu__scrim::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.022) 0px,
+      rgba(255, 255, 255, 0.022) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    radial-gradient(ellipse at 50% 45%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+.nf-menu__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: clamp(300px, 31vw, 460px);
+  padding: calc(var(--safe) * 1.1) calc(var(--safe) * 0.95);
+  gap: calc(var(--u) * 1.1);
+  background: linear-gradient(180deg, rgba(9, 15, 21, 0.72), rgba(5, 9, 13, 0.86));
+  border-right: 1px solid rgba(160, 200, 235, 0.14);
+  box-shadow: 22px 0 60px rgba(0, 0, 0, 0.5);
+  transform: translate3d(0, 0, 0);
+  animation: ap-panel-in 260ms cubic-bezier(0.16, 1, 0.3, 1) 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(160, 200, 235, 0.3) transparent;
+}
+
+.nf-menu__panel::-webkit-scrollbar { width: 6px; }
+.nf-menu__panel::-webkit-scrollbar-thumb { background: rgba(160, 200, 235, 0.28); }
+.nf-menu__panel::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes ap-panel-in {
+  from { opacity: 0; transform: translate3d(-22px, 0, 0); }
+  to { opacity: 1; transform: none; }
+}
+
+.nf-menu__brand {
+  font-size: calc(var(--u) * 1.5);
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  margin-left: 0.34em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #ffffff, #9fb9cd);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.nf-menu__kicker {
+  margin-top: -0.55em;
+  font-size: calc(var(--u-sm) * 0.9);
+  font-weight: 600;
+  letter-spacing: 0.4em;
+  color: var(--c-dim);
+  text-transform: uppercase;
+}
+
+.nf-menu__nav {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 0.28);
+  margin-top: calc(var(--u) * 0.6);
+}
+
+.nf-menu__btn {
+  position: relative;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--c-primary);
+  font-family: inherit;
+  font-size: calc(var(--u) * 1.06);
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: calc(var(--u) * 0.62) calc(var(--u) * 0.9);
+  cursor: pointer;
+  opacity: 0.72;
+  /* The hover affordance is a transform + a pseudo-element wash, never a
+     border/padding change, so hovering can never reflow the list. */
+  transform: translate3d(0, 0, 0);
+  transition: opacity 140ms ease, transform 160ms cubic-bezier(0.2, 1, 0.3, 1);
+}
+
+.nf-menu__btn::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8%;
+  bottom: 8%;
+  width: 2px;
+  background: var(--c-accent);
+  transform: scaleY(0);
+  transform-origin: 50% 50%;
+  transition: transform 160ms cubic-bezier(0.2, 1, 0.3, 1);
+}
+
+.nf-menu__btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(120, 190, 255, 0.16), transparent 70%);
+  opacity: 0;
+  transition: opacity 160ms ease;
+  pointer-events: none;
+}
+
+.nf-menu__btn:hover,
+.nf-menu__btn:focus-visible {
+  opacity: 1;
+  transform: translate3d(6px, 0, 0);
+  outline: none;
+}
+
+.nf-menu__btn:hover::before,
+.nf-menu__btn:focus-visible::before { transform: scaleY(1); }
+.nf-menu__btn:hover::after,
+.nf-menu__btn:focus-visible::after { opacity: 1; }
+
+.nf-menu__btn--danger:hover,
+.nf-menu__btn--danger:focus-visible { color: var(--c-danger); }
+.nf-menu__btn--danger:hover::before,
+.nf-menu__btn--danger:focus-visible::before { background: var(--c-danger); }
+
+.nf-menu__hint {
+  white-space: pre-line;
+  margin-top: auto;
+  padding-top: calc(var(--u) * 1.2);
+  font-size: calc(var(--u-sm) * 0.86);
+  letter-spacing: 0.16em;
+  color: var(--c-dim);
+  line-height: 1.7;
+}
+
+/* ── Settings pane ───────────────────────────────────────────────────────── */
+
+.nf-set {
+  position: relative;
+  flex: 1;
+  padding: calc(var(--safe) * 1.1) calc(var(--safe) * 1.1);
+  overflow-y: auto;
+  display: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(160, 200, 235, 0.3) transparent;
+}
+
+.nf-set::-webkit-scrollbar { width: 8px; }
+.nf-set::-webkit-scrollbar-thumb { background: rgba(160, 200, 235, 0.25); }
+.nf-set::-webkit-scrollbar-track { background: transparent; }
+
+.nf-menu[data-pane='settings'] .nf-set {
+  display: block;
+  animation: ap-set-in 240ms cubic-bezier(0.16, 1, 0.3, 1) 1;
+}
+
+@keyframes ap-set-in {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to { opacity: 1; transform: none; }
+}
+
+.nf-set__grid {
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 0.42);
+}
+
+.nf-set__head {
+  font-size: calc(var(--u-sm) * 0.94);
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  color: var(--c-accent);
+  text-transform: uppercase;
+  opacity: 0.8;
+  margin: calc(var(--u) * 0.9) 0 calc(var(--u) * 0.2);
+  padding-bottom: calc(var(--u) * 0.3);
+  border-bottom: 1px solid rgba(160, 200, 235, 0.14);
+}
+
+.nf-set__head:first-child { margin-top: 0; }
+
+.nf-set__row {
+  display: grid;
+  grid-template-columns: minmax(9em, 12em) 1fr minmax(4.2em, auto);
+  align-items: center;
+  gap: calc(var(--u) * 0.8);
+  padding: calc(var(--u) * 0.34) 0;
+}
+
+.nf-set__label {
+  font-size: var(--u-sm);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--c-primary);
+  opacity: 0.85;
+  text-transform: uppercase;
+}
+
+.nf-set__value {
+  font-size: var(--u-sm);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--c-accent);
+  text-align: right;
+}
+
+/* Range input, fully restyled — the native control is inconsistent across
+   platforms and would break the visual language instantly. */
+.nf-set__range {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+}
+
+.nf-set__range::-webkit-slider-runnable-track {
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--c-accent) 0%,
+    var(--c-accent) var(--fill, 50%),
+    rgba(255, 255, 255, 0.15) var(--fill, 50%),
+    rgba(255, 255, 255, 0.15) 100%
+  );
+}
+
+.nf-set__range::-moz-range-track {
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--c-accent) 0%,
+    var(--c-accent) var(--fill, 50%),
+    rgba(255, 255, 255, 0.15) var(--fill, 50%),
+    rgba(255, 255, 255, 0.15) 100%
+  );
+}
+
+.nf-set__range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  background: var(--c-primary);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.7);
+  transition: transform 120ms cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.nf-set__range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 0;
+  background: var(--c-primary);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.7);
+}
+
+.nf-set__range:hover::-webkit-slider-thumb,
+.nf-set__range:focus-visible::-webkit-slider-thumb { transform: scale(1.28); }
+
+/* Segmented control (quality tier). */
+.nf-set__seg {
+  display: flex;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px;
+}
+
+.nf-set__segbtn {
+  flex: 1;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--c-primary);
+  font-family: inherit;
+  font-size: calc(var(--u-sm) * 0.92);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: calc(var(--u) * 0.36) 0;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 130ms ease, background-color 130ms ease;
+}
+
+.nf-set__segbtn:hover { opacity: 0.85; background: rgba(255, 255, 255, 0.06); }
+
+.nf-set__segbtn[aria-pressed='true'] {
+  opacity: 1;
+  background: rgba(120, 190, 255, 0.22);
+  box-shadow: inset 0 -2px 0 var(--c-accent);
+}
+
+/* Toggle. The knob moves with translateX — compositor only. */
+.nf-set__toggle {
+  position: relative;
+  appearance: none;
+  border: 0;
+  width: calc(var(--u) * 2.5);
+  height: calc(var(--u) * 1.15);
+  background: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  padding: 0;
+  justify-self: start;
+  transition: background-color 160ms ease;
+}
+
+.nf-set__toggle::after {
+  content: '';
+  position: absolute;
+  top: 12%;
+  left: 3%;
+  width: 44%;
+  height: 76%;
+  background: var(--c-primary);
+  opacity: 0.7;
+  transform: translate3d(0, 0, 0);
+  transition: transform 170ms cubic-bezier(0.2, 1, 0.3, 1), opacity 170ms ease;
+}
+
+.nf-set__toggle[aria-pressed='true'] { background: rgba(120, 190, 255, 0.3); }
+.nf-set__toggle[aria-pressed='true']::after {
+  transform: translate3d(112%, 0, 0);
+  opacity: 1;
+}
+
+.nf-set__note {
+  grid-column: 1 / -1;
+  font-size: calc(var(--u-sm) * 0.82);
+  letter-spacing: 0.08em;
+  color: var(--c-dim);
+  opacity: 0.92;
+  line-height: 1.6;
+  margin-top: -0.3em;
+}
+
+/* Honour the OS "reduce motion" preference. Pulsing alarms are exactly the
+   class of animation that triggers vestibular discomfort, so they are the
+   first thing to go; the colour states still carry the same information. */
+@media (prefers-reduced-motion: reduce) {
+  .nf-hud *,
+  .nf-menu * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

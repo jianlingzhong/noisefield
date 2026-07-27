@@ -1,0 +1,65 @@
+name: Bug report
+description: Something behaves incorrectly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For **rendering** bugs, the capture URL is by far
+        the most useful thing you can give us — it makes the problem
+        reproducible exactly rather than approximately.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+
+  - type: input
+    id: capture-url
+    attributes:
+      label: Capture URL (rendering bugs)
+      description: >-
+        The deterministic harness URL that reproduces it, if applicable.
+      placeholder: "?shot=courtyard&hud=0&volumetrics=0"
+    validations:
+      required: false
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Load the page
+        2. ...
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: "Chrome 141 / Firefox 133 / Safari 18"
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+      description: >-
+        Visit chrome://gpu (or about:support in Firefox) if you are not sure.
+      placeholder: "Apple M2 / NVIDIA RTX 3070 / Intel Iris Xe"
+    validations:
+      required: false
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output
+      description: Any errors or warnings from the browser console.
+      render: text
+    validations:
+      required: false
