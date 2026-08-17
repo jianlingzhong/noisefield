@@ -40,13 +40,13 @@
     "check": "npm run typecheck && npm run test && npm run lint:md"
   },
   "dependencies": {
-    "n8ao": "^2.0.0",
-    "postprocessing": "^6.39.3",
+    "n8ao": "^2.0.1",
+    "postprocessing": "^6.39.4",
     "three": "^0.185.1",
-    "three-mesh-bvh": "^0.9.13"
+    "three-mesh-bvh": "^0.9.14"
   },
   "devDependencies": {
-    "@types/three": "^0.185.1",
+    "@types/three": "^0.185.4",
     "happy-dom": "^20.11.1",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
